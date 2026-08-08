@@ -2,7 +2,7 @@
 
 **A digital mini-marquee for the Neo Geo MVS.** MarqueeMark replaces a mini
 marquee card with a small LCD panel that *always shows the correct game*.
-It listens to a TerraOnion NeoSD Pro flash cart over USB and switches the
+It listens to a TerraOnion NeoSD Pro MVS flash cart over USB and switches the
 marquee art the instant you load or change a game. It also serves a live
 "now playing" overlay for OBS so your stream always shows what's running.
 
@@ -34,7 +34,7 @@ marquee art the instant you load or change a game. It also serves a live
 | [Double-sided mounting tape](https://amzn.to/45NlqaV) | Final panel mounting to the back of the marquee plexi. |
 | [Painter's tape](https://amzn.to/4wI9rHr) | Temporary mounting while you align and calibrate; commit to the strong tape only after calibration looks right. |
 | [USB-A to Micro-USB cable, 5 ft](https://amzn.to/4c5oxi0) | Pi to the NeoSD Pro's USB port (the cart uses Micro-USB). |
-| TerraOnion NeoSD Pro | The flash cart. MarqueeMark reads its game announcements; it does not modify the cart in any way. |
+| TerraOnion NeoSD Pro MVS | The flash cart. MarqueeMark reads its game announcements; it does not modify the cart in any way. |
 
 *The hardware links above are Amazon affiliate links; buying through them
 supports this project at no cost to you.*
@@ -44,6 +44,12 @@ using MAME short-name file naming (`mslug.png`, `kof95.png`, ...) are
 available to registered users at EmuMovies. Drop the PNGs into the `art/`
 folder, and add a `generic.png` (a generic Neo Geo marquee) which is used
 as the fallback image.
+
+The [SNK Neo-Geo MVS Marquee Pack (Mini)](https://emumovies.com/files/file/1628-neo-geo-mvs-marquee-pack-mini/)
+at EmuMovies is already named correctly for MarqueeMark. You must be a
+registered EmuMovies user (free account) to download it — the "Download
+Files" button on that page only appears once you're signed in. Download,
+unzip, and drag the PNGs onto the art manager page.
 
 ## How it works
 
@@ -55,12 +61,6 @@ Whenever a game is loaded (menu load, RAM load, or virtual-slot switch),
 the cart spontaneously broadcasts a 61-byte frame. As far as we know this
 protocol was previously undocumented; it was reverse-engineered for this
 project in July 2026:
-
-The [SNK Neo-Geo MVS Marquee Pack (Mini)](https://emumovies.com/files/file/1628-neo-geo-mvs-marquee-pack-mini/)
-at EmuMovies is already named correctly for MarqueeMark. You must be a
-registered EmuMovies user (free account) to download it — the "Download
-Files" button on that page only appears once you're signed in. Download,
-unzip, and drag the PNGs onto the art manager page.
 
 ```
 offset 0-2    magic 99 88 3A
@@ -172,7 +172,7 @@ cd /opt/marqueemark
 SDL_VIDEODRIVER=kmsdrm python3 marqueemark.py --rotate 90
 ```
 
-Load a game on the NeoSD - art should appear. If it's upside down, use
+Load a game on the NeoSD Pro - art should appear. If it's upside down, use
 `--rotate 270` instead. Ctrl+C to stop.
 
 ### 5. Mounting and calibration
@@ -269,7 +269,7 @@ path from a Windows PC. No SD-card readers or SFTP tools required.
 
 | Option | Default | Purpose |
 |---|---|---|
-| `--port` | `/dev/ttyACM0` | NeoSD serial device |
+| `--port` | `/dev/ttyACM0` | NeoSD Pro serial device |
 | `--art` | `./art` | Art folder |
 | `--rotate` | `0` | Output rotation: 0 / 90 / 180 / 270 |
 | `--calibrate` | - | Interactive window calibration, then exit |
@@ -306,7 +306,7 @@ path from a Windows PC. No SD-card readers or SFTP tools required.
   for real carts is the v2 goal.
 - One panel/window per Pi HDMI output today; the Pi 4's dual HDMI makes a
   two-window build possible and it's on the roadmap.
-- The NeoSD protocol here is unofficial and could change in future
+- The NeoSD Pro protocol here is unofficial and could change in future
   TerraOnion firmware. Firmware 1.07 behavior is what's documented above.
 
 ## Credits
