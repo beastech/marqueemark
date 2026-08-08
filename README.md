@@ -56,6 +56,12 @@ the cart spontaneously broadcasts a 61-byte frame. As far as we know this
 protocol was previously undocumented; it was reverse-engineered for this
 project in July 2026:
 
+The [SNK Neo-Geo MVS Marquee Pack (Mini)](https://emumovies.com/files/file/1628-neo-geo-mvs-marquee-pack-mini/)
+at EmuMovies is already named correctly for MarqueeMark. You must be a
+registered EmuMovies user (free account) to download it — the "Download
+Files" button on that page only appears once you're signed in. Download,
+unzip, and drag the PNGs onto the art manager page.
+
 ```
 offset 0-2    magic 99 88 3A
 offset 3-4    u16 LE  zero-based menu slot index
