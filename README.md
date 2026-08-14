@@ -221,7 +221,7 @@ cd /opt/marqueemark
 SDL_VIDEODRIVER=kmsdrm python3 marqueemark.py --rotate 90
 ```
 
-Load a game on the NeoSD; art should appear. If it's upside down, use
+Load a game on the NeoSD Pro; art should appear. If it's upside down, use
 `--rotate 270` instead. Ctrl+C to stop.
 
 ### 5. Mounting and calibration
