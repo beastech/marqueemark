@@ -43,9 +43,17 @@ say "Setting up $INSTALL_DIR"
 sudo mkdir -p "$INSTALL_DIR/art"
 sudo chown -R "$USER_NAME:$USER_NAME" "$INSTALL_DIR"
 
-say "Downloading marqueemark.py"
-curl -fsSL "$REPO_RAW/marqueemark.py" -o "$INSTALL_DIR/marqueemark.py" \
-  || fail "Could not download marqueemark.py — check your internet connection."
+if [ -f "$INSTALL_DIR/marqueemark.py" ]; then
+  say "marqueemark.py already present in $INSTALL_DIR — skipping download"
+  echo "  (delete it first if you want the installer to fetch the latest version)"
+else
+  say "Downloading marqueemark.py"
+  curl -fsSL "$REPO_RAW/marqueemark.py" -o "$INSTALL_DIR/marqueemark.py" || fail \
+    "Could not download marqueemark.py from $REPO_RAW/marqueemark.py
+  This usually means the GitHub repo is private, not yet published, or you're offline.
+  Workaround: copy marqueemark.py into $INSTALL_DIR yourself, then re-run this script —
+  it will detect the file and skip the download."
+fi
 
 # ----------------------------------------------------------- permissions
 say "Granting serial and display access"
@@ -68,13 +76,21 @@ fi
 # Panels mount in portrait; which value is right-side-up depends on which
 # edge the ribbon cable exits. Default 90; calibration's 'p' preview will
 # tell you if it should be 270 (art upside down = use the other value).
+# Panels mount in portrait, so only 90/270 are valid here (they're the
+# same physical orientation flipped, depending on which edge the panel's
+# ribbon cable exits). If your art comes out upside down after first
+# boot, that's not a bug — just swap 90<->270 in the service file.
 ROTATE=90
 if [ -t 0 ]; then
-  printf '\nPanel rotation [90/270/0/180] (default 90 — portrait): '
+  printf '\nPanel rotation [90/270] (default 90 — try this first; if the\n'
+  printf 'art comes out upside down, re-run with 270 instead): '
   read -r ans || true
-  case "${ans:-}" in 90|270|0|180) ROTATE="$ans" ;; esac
+  case "${ans:-}" in 90|270) ROTATE="$ans" ;; esac
 fi
-say "Using --rotate $ROTATE (edit $SERVICE later to change)"
+say "Using --rotate $ROTATE"
+echo "  (If the image is upside down: sudo systemctl edit --full marqueemark,"
+echo "   change --rotate $ROTATE to --rotate $([ "$ROTATE" = 90 ] && echo 270 || echo 90),"
+echo "   then: sudo systemctl daemon-reload && sudo systemctl restart marqueemark)"
 
 # ---------------------------------------------------------------- service
 say "Installing systemd service"
