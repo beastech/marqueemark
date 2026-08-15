@@ -77,7 +77,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pygame
 import serial
 
-VERSION = "1.1"
+VERSION = "1.1.2"
 
 MAGIC = b"\x99\x88\x3a"
 FRAME_LEN = 61
@@ -1230,6 +1230,14 @@ def main():
                     display.show_game(restored)
                     publish(restored)
                     last = (restored["ngh"], restored["short"])
+                else:
+                    # Nothing known yet (fresh install, or the slot map has
+                    # not seen Flash Slot 1 announced). The cart stays
+                    # silent until a game is loaded, so show the generic
+                    # marquee rather than leaving the panel black.
+                    print("[MarqueeMark] no known game yet, showing generic marquee")
+                    display.show_idle()
+                    publish(None)
 
                 for frame in frames(port):
                     display.process_calibration_queue()
