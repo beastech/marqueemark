@@ -1,6 +1,6 @@
 # MarqueeMark
 
-**A digital mini-marquee for the Neo Geo MVS.** MarqueeMark replaces a mini
+**A digital mini-marquee for the Neo Geo MVS using NeoSD Pro.** MarqueeMark replaces a mini
 marquee card with a small LCD panel that *always shows the correct game*:
 it listens to a TerraOnion NeoSD Pro flash cart over USB and switches the
 marquee art the instant you load or change a game. It also serves a live
