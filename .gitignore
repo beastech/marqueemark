@@ -1,0 +1,5 @@
+art/
+calibration.json
+lastgame.json
+__pycache__/
+*.pyc
