@@ -827,7 +827,10 @@ class Display:
         if os.path.exists(path):
             surf = self._fit(pygame.image.load(path).convert())
         else:
-            fallback = os.path.join(self.art_dir, "default.png")
+            # No art for this game: fall back to the generic marquee,
+            # the same image the overlay and idle state use. Only if
+            # that is missing too do we draw a text card.
+            fallback = os.path.join(self.art_dir, GENERIC + ".png")
             if os.path.exists(fallback):
                 surf = self._fit(pygame.image.load(fallback).convert())
             else:
