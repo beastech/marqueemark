@@ -47,7 +47,7 @@ reversible.
 *The hardware links above are Amazon affiliate links, buying through them
 supports this project at no cost to you.*
 
-**Marquee art is not included** (it's copyrighted). Mini-marquee art packs
+**Marquee art is not included** Mini-marquee art packs
 using MAME short-name file naming (`mslug.png`, `kof95.png`, ...) are
 available to registered users at EmuMovies. Add the PNGs from the built-in
 art manager page, and include a `generic.png` (a generic Neo Geo marquee)
