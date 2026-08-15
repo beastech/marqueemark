@@ -12,9 +12,12 @@
 #   - adds the one-command sudoers rule used for display sleep
 #   - sets the Pi to boot to the console (MarqueeMark draws the screen itself)
 #   - installs and starts the systemd service
+#   - reboots at the end (10 second countdown, Ctrl+C to cancel)
 #
-# Safe to re-run; it updates marqueemark.py and leaves your art,
-# calibration.json, and lastgame.json alone.
+# Safe to re-run: this is also how you UPDATE. It re-downloads
+# marqueemark.py, preserves any extra flags on your existing service,
+# and leaves your art, calibration.json, and lastgame.json alone.
+# On an update it restarts the service instead of rebooting.
 
 set -euo pipefail
 
@@ -43,16 +46,32 @@ say "Setting up $INSTALL_DIR"
 sudo mkdir -p "$INSTALL_DIR/art"
 sudo chown -R "$USER_NAME:$USER_NAME" "$INSTALL_DIR"
 
-if [ -f "$INSTALL_DIR/marqueemark.py" ]; then
-  say "marqueemark.py already present in $INSTALL_DIR — skipping download"
-  echo "  (delete it first if you want the installer to fetch the latest version)"
+# Always try to fetch the latest version, so re-running this script is
+# how you update. Download to a temp file first: a failed or partial
+# download must never clobber a working install.
+IS_UPDATE=0
+[ -f "$SERVICE" ] && IS_UPDATE=1
+
+say "Downloading marqueemark.py"
+TMP_PY="$(mktemp)"
+if curl -fsSL "$REPO_RAW/marqueemark.py" -o "$TMP_PY" && [ -s "$TMP_PY" ]; then
+  if [ -f "$INSTALL_DIR/marqueemark.py" ] \
+     && cmp -s "$TMP_PY" "$INSTALL_DIR/marqueemark.py"; then
+    echo "  already up to date"
+  else
+    mv "$TMP_PY" "$INSTALL_DIR/marqueemark.py"
+    echo "  updated $INSTALL_DIR/marqueemark.py"
+  fi
+  rm -f "$TMP_PY"
+elif [ -f "$INSTALL_DIR/marqueemark.py" ]; then
+  rm -f "$TMP_PY"
+  say "Download failed, keeping the copy already in $INSTALL_DIR"
+  echo "  (check your internet connection if you were expecting an update)"
 else
-  say "Downloading marqueemark.py"
-  curl -fsSL "$REPO_RAW/marqueemark.py" -o "$INSTALL_DIR/marqueemark.py" || fail \
-    "Could not download marqueemark.py from $REPO_RAW/marqueemark.py
-  This usually means the GitHub repo is private, not yet published, or you're offline.
-  Workaround: copy marqueemark.py into $INSTALL_DIR yourself, then re-run this script —
-  it will detect the file and skip the download."
+  rm -f "$TMP_PY"
+  fail "Could not download marqueemark.py from $REPO_RAW/marqueemark.py
+  This usually means the repo is private/unpublished, or you are offline.
+  Workaround: copy marqueemark.py into $INSTALL_DIR yourself, then re-run."
 fi
 
 # ----------------------------------------------------------- permissions
@@ -76,21 +95,30 @@ fi
 # Panels mount in portrait; which value is right-side-up depends on which
 # edge the ribbon cable exits. Default 90; calibration's 'p' preview will
 # tell you if it should be 270 (art upside down = use the other value).
-# Panels mount in portrait, so only 90/270 are valid here (they're the
-# same physical orientation flipped, depending on which edge the panel's
-# ribbon cable exits). If your art comes out upside down after first
-# boot, that's not a bug — just swap 90<->270 in the service file.
+# Panels mount in portrait, so only 90/270 are meaningful; they are the
+# same orientation flipped, depending on which edge the panel's ribbon
+# cable exits. We always start at 90 and let the admin page's "Flip 180"
+# button handle the other case: it saves the rotation into
+# calibration.json, which overrides this value from then on. No prompt
+# here on purpose, most people have not mounted the panel yet at this
+# point and could not answer the question anyway.
 ROTATE=90
-if [ -t 0 ]; then
-  printf '\nPanel rotation [90/270] (default 90 — try this first; if the\n'
-  printf 'art comes out upside down, re-run with 270 instead): '
-  read -r ans || true
-  case "${ans:-}" in 90|270) ROTATE="$ans" ;; esac
+
+# On an update, keep any extra flags the user added to ExecStart
+# (--idle generic, --keep-awake, --http-port, a flipped --rotate, etc.)
+# so reinstalling never silently reverts their configuration.
+EXTRA_ARGS=""
+if [ -f "$SERVICE" ]; then
+  EXISTING="$(grep -m1 '^ExecStart=' "$SERVICE" 2>/dev/null || true)"
+  EXTRA_ARGS="${EXISTING#*marqueemark.py}"
+  EXTRA_ARGS="$(echo "$EXTRA_ARGS" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 fi
-say "Using --rotate $ROTATE"
-echo "  (If the image is upside down: sudo systemctl edit --full marqueemark,"
-echo "   change --rotate $ROTATE to --rotate $([ "$ROTATE" = 90 ] && echo 270 || echo 90),"
-echo "   then: sudo systemctl daemon-reload && sudo systemctl restart marqueemark)"
+if [ -n "$EXTRA_ARGS" ]; then
+  RUN_ARGS="$EXTRA_ARGS"
+  say "Keeping your existing options: $RUN_ARGS"
+else
+  RUN_ARGS="--rotate $ROTATE"
+fi
 
 # ---------------------------------------------------------------- service
 say "Installing systemd service"
@@ -106,7 +134,7 @@ Environment=SDL_VIDEODRIVER=kmsdrm
 Environment=SDL_AUDIODRIVER=dummy
 Environment=PYTHONUNBUFFERED=1
 WorkingDirectory=$INSTALL_DIR
-ExecStart=/usr/bin/python3 $INSTALL_DIR/marqueemark.py --rotate $ROTATE
+ExecStart=/usr/bin/python3 $INSTALL_DIR/marqueemark.py $RUN_ARGS
 Restart=always
 RestartSec=3
 
@@ -119,25 +147,62 @@ sudo systemctl enable --now marqueemark
 
 # ------------------------------------------------------------------ done
 HOST="$(hostname)"
+if [ "$IS_UPDATE" -eq 1 ]; then
+cat <<UPDONE
+
+=========================================================================
+ MarqueeMark updated.
+   ART + CALIBRATION:  http://$HOST.local:8080/admin
+=========================================================================
+UPDONE
+else
 cat <<DONE
 
 =========================================================================
- MarqueeMark is installed and running.
+ MarqueeMark is installed.
 
- Next steps:
-   1. ART:        open  http://$HOST.local:8080/admin  in a browser on
-                  your network and drag in your marquee PNGs (MAME short
-                  names: mslug.png, kof95.png, ... plus generic.png).
-   2. CALIBRATE:  with the panel mounted (painter's tape first), run:
-                    sudo systemctl stop marqueemark
-                    cd $INSTALL_DIR
-                    SDL_VIDEODRIVER=kmsdrm python3 marqueemark.py \\
-                        --rotate $ROTATE --calibrate
-                    sudo systemctl start marqueemark
-   3. OBS:        add a Browser Source:  http://$HOST.local:8080/overlay
+ A reboot is required to finish: the Pi must boot to the console instead
+ of the desktop for the display to work, and your new permissions take
+ effect then too. The web interface will not respond until after it.
 
- Watch it live:   journalctl -u marqueemark -f
- NOTE: group changes need a log-out/log-in (or reboot) to take effect —
- a reboot now is the simplest way to finish:  sudo reboot
+ After the reboot, everything happens in your browser:
+   ART + CALIBRATION:  http://$HOST.local:8080/admin
+   OBS BROWSER SOURCE: http://$HOST.local:8080/overlay
+
+ (If http://$HOST.local does not resolve, use the Pi's IP address:
+  run  hostname -I  to see it.)
+
+ Watch the service live:  journalctl -u marqueemark -f
 =========================================================================
 DONE
+fi
+
+# An update does not need a reboot: the console-boot setting and group
+# memberships are already in place from the first install, so restarting
+# the service is enough and far less disruptive.
+if [ "$IS_UPDATE" -eq 1 ]; then
+  say "Update complete, restarting the service"
+  sudo systemctl restart marqueemark
+  echo "  No reboot needed. Watch it with: journalctl -u marqueemark -f"
+  exit 0
+fi
+
+# First install: reboot with a countdown so it is automatic but never a
+# surprise. Read from /dev/tty rather than stdin, since this script is
+# normally run via "curl ... | bash" where stdin is the pipe.
+if [ -e /dev/tty ] && (: >/dev/tty) 2>/dev/null; then
+  if [ -n "${SSH_CONNECTION:-}" ]; then
+    echo "You are connected over SSH: this connection will drop. Reconnect"
+    echo "in about 30 seconds."
+  fi
+  echo
+  for i in 10 9 8 7 6 5 4 3 2 1; do
+    printf '\rRebooting in %2d seconds... (press Ctrl+C to cancel and reboot later) ' "$i"
+    sleep 1
+  done
+  echo
+  sudo reboot
+else
+  echo "No terminal detected, skipping the automatic reboot."
+  echo "Finish the install by running:  sudo reboot"
+fi
