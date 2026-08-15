@@ -101,7 +101,7 @@ state store, and an HTTP/SSE server for the OBS overlay.
    credentials. This is what lets you reach the Pi headless, no
    keyboard, mouse, or monitor needed for setup.
 4. Write the image, boot the Pi, and SSH in
-   (`ssh <username>@marquee.local`).
+   (`ssh <username>@marquee.local` if you used the hostname "marquee").
 5. Run:
 
 ```bash
