@@ -221,7 +221,7 @@ cd /opt/marqueemark
 SDL_VIDEODRIVER=kmsdrm python3 marqueemark.py --rotate 90
 ```
 
-Load a game on the NeoSD Pro; art should appear. If it's upside down, use
+Load a game on the NeoSD; art should appear. If it's upside down, use
 `--rotate 270` instead. Ctrl+C to stop.
 
 ### 5. Mounting and calibration
@@ -351,8 +351,9 @@ path from a Windows PC: no SD-card readers or SFTP tools required.
 ## Limitations & roadmap
 
 - Detection requires a NeoSD Pro. With a real MVS cartridge in the slot
-  the marquee shows the generic art (`--idle generic`); automatic
-  detection for real carts is the v2 goal.
+  the marquee shows the generic art (`--idle generic`). v2 will let you
+  manually pick a marquee for that slot from the admin panel, plus manual
+  controls to turn the display on and put it to sleep on demand.
 - One panel/window per Pi HDMI output today; the Pi 4's dual HDMI makes a
   two-window build possible and it's on the roadmap.
 - The NeoSD protocol here is unofficial and could change in future
