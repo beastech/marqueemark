@@ -39,20 +39,20 @@ Usage:   python3 marqueemark.py [--port /dev/ttyACM0] [--art ./art]
          python3 marqueemark.py --calibrate [--rotate ...]
              Interactive calibration: draws a test pattern, controlled from
              THIS terminal (works over SSH). Keys:
-               arrows      move (align top-left corner first)
-               + / -       grow / shrink — aspect locked to the real
-                           mini-marquee card (4.44 x 5.44), so height
-                           always tracks width automatically
-               W / w       wider / narrower  (unlocks aspect - rare cabs)
-               H / h       taller / shorter  (unlocks aspect - rare cabs)
-               a           re-snap height to true card aspect
+               arrows      move up / down / left / right
+               + / -       grow / shrink (uniform - proportions are
+                           always locked to the real mini-marquee card,
+                           4.44 x 5.44; stretching is not possible)
+               , / .       tilt -0.1 deg / +0.1 deg (fine rotation, for
+                           squaring up a slightly crooked panel mount)
+               < / >       tilt -0.5 deg / +0.5 deg (coarse)
                t           cycle step size (1 / 5 / 20 px)
                p           toggle test pattern <-> sample art
                r           reset to default rectangle
                s           save to calibration.json
                q or Esc    quit
-             Normal flow: arrows to the window's top-left, +/- until it
-             fills the opening, s, q. Aspect is handled for you.
+             Flow: arrows to position, +/- to size, ,/./</> to square up
+             a crooked mount, s to save. Proportions can never change.
              Saved calibration is applied automatically on normal runs:
              art fills the calibrated rectangle exactly (the window).
 Deps:    sudo apt install python3-serial python3-pygame
@@ -725,10 +725,9 @@ def calibrate(display):
                          % (r.x, r.y, r.w, r.h, tilt, steps[step_i]))
         sys.stdout.flush()
 
-    print("Calibration: arrows = align top-left | +/- = size (aspect locked)")
+    print("Calibration: arrows = move | +/- = size (proportions always locked)")
     print("  tilt: , . = 0.1 deg | < > = 0.5 deg  (counters a crooked mount)")
-    print("  advanced: W/w H/h free-resize | a re-snap aspect | t step")
-    print("  p pattern/art | r reset | s save | q quit")
+    print("  t = step size | p = pattern/art | r = reset | s = save | q = quit")
     fd = sys.stdin.fileno()
     old_tty = termios.tcgetattr(fd)
     try:
@@ -761,8 +760,6 @@ def calibrate(display):
                 r.w += s; r.h = round(r.w * MARQUEE_ASPECT)
             elif ch == "-":
                 r.w -= s; r.h = round(r.w * MARQUEE_ASPECT)
-            elif ch == "a":
-                r.h = round(r.w * MARQUEE_ASPECT)
             elif ch == ",":
                 tilt -= 0.1
             elif ch == ".":
@@ -771,14 +768,6 @@ def calibrate(display):
                 tilt -= 0.5
             elif ch == ">":
                 tilt += 0.5
-            elif ch == "W":
-                r.w += s
-            elif ch == "w":
-                r.w -= s
-            elif ch == "H":
-                r.h += s
-            elif ch == "h":
-                r.h -= s
             elif ch == "t":
                 step_i = (step_i + 1) % len(steps)
             elif ch == "p":
