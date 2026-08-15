@@ -21,11 +21,15 @@ reversible.
   cabinet powering on, before you touch anything
 - **Display sleep**: when the cabinet turns off, the panel's backlight
   shuts down too; it wakes automatically with the cab
-- **Interactive calibration**: align the image to your marquee window with
-  arrow keys, including a tilt adjustment (0.1° steps) that squares up a
-  slightly crooked panel mount without re-taping
+- **Calibration from your browser**: position, resize, tilt, and flip the
+  image from the admin page on any phone or PC while watching the panel
+  update live. No SSH, no keyboard, no Linux required. Proportions are
+  locked to the real mini-marquee card, so the image can never be
+  stretched.
 - **OBS stream overlay**: a browser source URL that shows the current
   game's mini-marquee art in the corner of your stream, updating live
+- **Browser art manager**: drag and drop your marquee PNGs onto a web page
+  to install them
 - Runs headless as a systemd service; survives crashes, USB unplugs, and
   power cycles
 
@@ -45,9 +49,9 @@ supports this project at no cost to you.*
 
 **Marquee art is not included** (it's copyrighted). Mini-marquee art packs
 using MAME short-name file naming (`mslug.png`, `kof95.png`, ...) are
-available to registered users at EmuMovies. Drop the PNGs into the `art/`
-folder, and add a `generic.png` (a generic Neo Geo marquee) which is used
-as the fallback image.
+available to registered users at EmuMovies. Add the PNGs from the built-in
+art manager page, and include a `generic.png` (a generic Neo Geo marquee)
+which is used as the fallback image.
 
 ## How it works
 
@@ -81,11 +85,18 @@ why that tracking exists.
 
 MarqueeMark itself is one Python file: a serial listener, a pygame
 renderer that draws directly to the display (no desktop needed), a small
-state store, and an HTTP/SSE server for the OBS overlay.
+state store, and an HTTP server for the admin page and OBS overlay.
 
-## Installation
+## Installation (quick install)
 
-### Quick install (recommended)
+Three steps: flash the card, run one command, reboot. You do not need to
+know Linux, and after the reboot everything else happens in a web
+browser. This is the recommended path for everyone; a manual,
+step-by-step version is documented further down under
+[Manual installation](#manual-installation) for reference or customized
+setups.
+
+### Step 1: flash the SD card
 
 1. Download **Raspberry Pi Imager** from
    [raspberrypi.com/software](https://www.raspberrypi.com/software)
@@ -97,60 +108,189 @@ state store, and an HTTP/SSE server for the OBS overlay.
      required)
    - **Choose Storage**: your microSD card
 3. Before writing, click the settings gear (OS customisation) and set a
-   **hostname** (e.g. `marquee`), **enable SSH**, and add your **Wi-Fi**
-   credentials. This is what lets you reach the Pi headless, no
-   keyboard, mouse, or monitor needed for setup.
-4. Write the image, boot the Pi, and SSH in
-   (`ssh <username>@marquee.local` if you used the hostname "marquee").
-5. Run:
+   **hostname** (`marquee` is used in the examples below), **enable
+   SSH**, and add your **Wi-Fi** credentials. Setting the hostname here
+   is worth doing either way: it's what makes `marquee.local` work later.
+4. Write the image.
+
+### Step 2: run the installer
+
+Pick whichever is easier for you. Both end up in the same place.
+
+**Option A: with a keyboard and monitor (easiest, no SSH)**
+
+Do this at a desk *before* taping the panel into your marquee, so the
+screen is in its normal landscape orientation and the desktop is
+readable. Once the panel is mounted in portrait the desktop will be
+sideways, which is survivable but unpleasant to type against.
+
+1. Connect the panel (or any HDMI monitor), a USB keyboard, and power up
+   the Pi. It boots to the desktop.
+2. If you didn't set Wi-Fi in Imager, connect now using the network icon
+   in the taskbar.
+3. Press **Ctrl+Alt+T** to open a terminal.
+4. Type the install command:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/beastech/marqueemark/main/install.sh | bash
 ```
 
-You'll be asked for the panel's rotation (90 or 270, just pick the
-default for now; see the note below). The script installs everything,
-sets up the service, and prints your next steps.
+If you'd rather not type that by hand, open Chromium on the Pi, go to
+this project's GitHub page, copy the command, and paste it into the
+terminal with **Ctrl+Shift+V** (in a Linux terminal, plain Ctrl+V does
+not paste).
 
-6. **Reboot before doing anything else**: `sudo reboot`. This isn't
-   optional: the Pi needs to boot to the console (not the desktop) for
-   the display driver to work, and this is also when your new permissions
-   take effect. Trying the web interface before this reboot will fail
-   with a "connection refused" error.
+The installer reboots the Pi when it finishes, so expect the desktop to
+disappear and the marquee software to take over the screen.
 
-After it comes back up, add your art (see
-[Managing marquee art](#managing-marquee-art)), then continue with
-[Mounting and calibration](#5-mounting-and-calibration) to size and
-align the image once the panel is physically in place.
+**Option B: headless over SSH**
 
-**If the image is upside down:** rotation only has two valid values for
-a portrait-mounted panel, 90 and 270. They're the same orientation
-flipped, depending on which edge the panel's ribbon cable exits. If the
-default (90) comes out upside down, swap it:
+Boot the Pi with no monitor attached, then from another computer:
 
 ```bash
-sudo systemctl edit --full marqueemark
+ssh <username>@marquee.local
 ```
 
-Change `--rotate 90` to `--rotate 270` (or vice versa) on the
-`ExecStart` line, save, then:
+Once connected, run the install command:
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl restart marqueemark
+curl -fsSL https://raw.githubusercontent.com/beastech/marqueemark/main/install.sh | bash
 ```
 
-**To resize or reposition the image** (it doesn't fill the window
-correctly, or needs to move): this is what calibration mode is for.
-Jump to [Mounting and calibration](#5-mounting-and-calibration). In
-short: stop the service, run
-`SDL_VIDEODRIVER=kmsdrm python3 marqueemark.py --rotate <90 or 270> --calibrate`,
-use the arrow keys to position and `+`/`-` to resize (proportions are
-locked automatically), `s` to save, `q` to quit, then start the service
-again.
+### Step 3: let it reboot
 
-That's the whole install; the sections below describe the same steps
-manually, for reference or customized setups.
+When the installer finishes it counts down from 10 and reboots the Pi
+automatically. This is required, not cosmetic: the Pi has to boot to the
+console instead of the desktop for the display to work, and your new
+permissions take effect at the same time. If you press Ctrl+C to cancel
+the countdown, run `sudo reboot` yourself before using the web interface,
+or it will refuse the connection.
+
+If you installed over SSH, your connection will drop during the reboot.
+Reconnect after about 30 seconds, or just move to your browser; you're
+done with the terminal either way.
+
+You are never asked about the panel's rotation. If the image comes out
+upside down, one button on the admin page fixes it (see
+[Calibrating the image](#calibrating-the-image)).
+
+That's the whole install. Everything from here happens in a browser on
+any device on your network: open **`http://marquee.local:8080/admin`** to
+add art and calibrate the image. See
+[Using the admin page](#using-the-admin-page) below.
+
+Can't reach `marquee.local`? Use the Pi's IP address instead. Run
+`hostname -I` on the Pi to see it, then browse to
+`http://THAT_ADDRESS:8080/admin`. Note that if you never set a hostname
+in Imager, the default is `raspberrypi.local`, not `marquee.local`.
+
+## Updating MarqueeMark
+
+To update to the latest version, run the same install command again:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/beastech/marqueemark/main/install.sh | bash
+```
+
+On a re-run the installer downloads the current version, keeps any
+options you added to the service (such as `--idle generic` or
+`--keep-awake`), and restarts the service instead of rebooting. Your art,
+calibration, and slot history are left untouched.
+
+## Keeping the Pi updated
+
+The installer deliberately does not upgrade your operating system. A full
+upgrade can take 10 to 20 minutes on a Pi, can stop to ask questions
+mid-install, and isn't needed for MarqueeMark to run. That choice is left
+to you.
+
+This Pi will likely sit on your network for years, though, so it's worth
+keeping patched. To bring it up to date once, whenever you like:
+
+```bash
+sudo apt update && sudo apt full-upgrade -y
+```
+
+To have it install security updates automatically from then on, one
+command sets it up:
+
+```bash
+sudo apt install -y unattended-upgrades
+```
+
+On Raspberry Pi OS that enables daily security updates with no further
+configuration. It runs quietly in the background and won't interrupt the
+marquee.
+
+### A note on network security
+
+MarqueeMark's admin page has no password. Anyone who can reach the Pi on
+your network can upload art, delete files, and change the calibration.
+That's a deliberate trade for ease of setup, and it's fine on a normal
+home network.
+
+Do not port-forward this device or expose port 8080 to the internet. It
+is designed to be reached only from inside your own network.
+
+## Using the admin page
+
+Open **`http://YOUR_PI_HOSTNAME.local:8080/admin`** from any browser on
+your network, phone or PC. Everything you need after installation lives
+here, and none of it requires SSH.
+
+Note: the bare address (`http://YOUR_PI_HOSTNAME.local:8080/`) serves the
+OBS overlay, not the admin page. Include `/admin`.
+
+### Adding marquee art
+
+Drag and drop your PNG files onto the drop zone. The page shows every
+installed marquee as a thumbnail, lets you delete files, and warns you if
+`generic.png` (the fallback image) is missing.
+
+Files must be named by MAME short name (`mslug.png`, `kof95.png`, ...);
+only PNGs are accepted, and names are sanitized automatically. Because
+the art lives on the Pi's Linux partition, this page is also the easiest
+path from a Windows PC: no SD-card readers or SFTP tools required.
+
+If you're not sure what a game's short name is, you don't have to look it
+up: load the game on the NeoSD Pro and MarqueeMark logs the exact name it
+wants (`journalctl -u marqueemark -n 5`), or just watch which art fails to
+appear.
+
+### Calibrating the image
+
+Mount the panel behind the marquee window with **painter's tape** first,
+positioned so live pixels overhang the window opening on all four edges.
+Then click **Start Calibration** on the admin page. A test pattern appears
+on the panel and the controls become active. Watch the physical marquee
+while you click; it updates live.
+
+- **Arrow pad**: moves the image up, down, left, and right.
+- **Center button**: cycles the nudge step (5px, 1px, 20px). Start coarse,
+  finish on 1px.
+- **Size + / -**: grows and shrinks the image. Proportions are locked to
+  the real 4.44" x 5.44" mini-marquee card, so the image can never be
+  stretched or distorted.
+- **Tilt buttons**: rotate the image in 0.1° and 0.5° steps. Use this if
+  the panel ended up slightly crooked when you taped it; there is no need
+  to re-tape.
+- **Flip 180°**: use this if the image is upside down. This is saved with
+  the rest of your calibration, so it survives reboots.
+- **Preview**: switches between the alignment test pattern and real
+  marquee art, for a final check of how it actually looks.
+- **Save** stores everything; **Cancel** discards it and returns the
+  marquee to normal.
+
+Aim to have the pattern slightly overfill the window opening on all four
+sides, so no black edge is visible through the plexi. When it looks right,
+commit the panel with the double-sided tape and re-run calibration for a
+final touch-up if the panel shifted.
+
+## Manual installation
+
+You do not need any of this if you used the quick install above. These
+are the same steps the installer performs, written out for anyone who
+wants to do it by hand or adapt it to a different setup.
 
 ### 1. Operating system
 
@@ -158,11 +298,9 @@ Flash **Raspberry Pi OS (64-bit)** with Raspberry Pi Imager. In the
 imager's settings, set a hostname (e.g. `marquee`), enable SSH, and add
 your Wi-Fi credentials so the Pi is reachable headless from first boot.
 
-Boot the Pi, SSH in, and update:
-
-```bash
-sudo apt update && sudo apt full-upgrade -y
-```
+Boot the Pi and SSH in. Optionally bring the OS up to date first (see
+[Keeping the Pi updated](#keeping-the-pi-updated)); it isn't required for
+MarqueeMark.
 
 Set the Pi to boot to the console (no desktop, MarqueeMark draws to the
 screen directly):
@@ -179,10 +317,8 @@ sudo mkdir -p /opt/marqueemark/art
 sudo chown -R $USER:$USER /opt/marqueemark
 ```
 
-Copy `marqueemark.py` into `/opt/marqueemark/`. Art can be added later
-from any browser via the built-in art manager (see
-[Managing marquee art](#managing-marquee-art)), no file-transfer tools
-needed.
+Copy `marqueemark.py` into `/opt/marqueemark/`. Art is added later from
+the admin page, no file-transfer tools needed.
 
 Give your user serial and display access (log out and back in after):
 
@@ -211,43 +347,7 @@ sudo chmod 440 /etc/sudoers.d/marqueemark
 ls /dev/ttyACM0
 ```
 
-### 4. First run and rotation
-
-The panel mounts in portrait, so the output must be rotated. Find your
-rotation (90 or 270 depending on which edge the ribbon cable exits):
-
-```bash
-cd /opt/marqueemark
-SDL_VIDEODRIVER=kmsdrm python3 marqueemark.py --rotate 90
-```
-
-Load a game on the NeoSD; art should appear. If it's upside down, use
-`--rotate 270` instead. Ctrl+C to stop.
-
-### 5. Mounting and calibration
-
-1. Mount the panel behind the marquee window with **painter's tape**
-   first. Bias it so live pixels overhang the window opening on all four
-   edges.
-2. Run calibration (keys are typed in your SSH terminal, no keyboard
-   needs to be attached to the Pi):
-
-```bash
-SDL_VIDEODRIVER=kmsdrm python3 marqueemark.py --rotate 90 --calibrate
-```
-
-3. **Arrow keys** move the test pattern: put its top-left corner in the
-   window's top-left corner. **`+` / `-`** resize it; the aspect ratio is
-   locked to the real 4.44" x 5.44" mini-marquee card, so proportions are
-   always correct. Size it to slightly overfill the opening.
-4. If the mount is slightly crooked, square the image with the tilt keys:
-   **`,` / `.`** (0.1°) and **`<` / `>`** (0.5°).
-5. **`p`** previews with real art, **`t`** cycles the nudge step
-   (5/1/20 px), **`s`** saves, **`q`** quits.
-6. When it looks perfect, commit the panel with the double-sided tape and
-   re-run calibration for a final touch-up if needed.
-
-### 6. Run as a service
+### 4. Run as a service
 
 Create `/etc/systemd/system/marqueemark.service`:
 
@@ -271,7 +371,7 @@ RestartSec=3
 WantedBy=multi-user.target
 ```
 
-(Replace `YOUR_USERNAME` and the rotation value with yours.) Then:
+(Replace `YOUR_USERNAME` with yours.) Then:
 
 ```bash
 sudo systemctl daemon-reload
@@ -289,6 +389,11 @@ the marquee shows the Flash Slot 1 game automatically; switch games and it
 follows; power the cab off and the panel blanks, then sleeps its
 backlight ~10 seconds later.
 
+Note on `--rotate`: this only sets the starting orientation. Once you use
+the **Flip 180°** button on the admin page, that choice is saved in
+`calibration.json` and takes over, so you never need to edit this file to
+correct an upside-down image.
+
 ## OBS stream overlay
 
 MarqueeMark serves a transparent overlay page showing the current game's
@@ -301,39 +406,36 @@ That's it. When no game is identified, the overlay shows `generic.png`.
 Also available: `http://...:8080/current` returns the current game as
 JSON, if you want to build your own integrations.
 
-## Managing marquee art
-
-With the service running, open **`http://YOUR_PI_HOSTNAME.local:8080/admin`**
-from any browser on your network (PC or phone). Drag and drop your PNG
-files onto the page. It shows every installed marquee as a thumbnail,
-lets you delete files, and warns you if `generic.png` (the fallback
-image) is missing.
-
-Files must be named by MAME short name (`mslug.png`, `kof95.png`, ...);
-only PNGs are accepted, and names are sanitized automatically. Because
-the art lives on the Pi's Linux partition, this page is also the easiest
-path from a Windows PC: no SD-card readers or SFTP tools required.
-
 ## Command-line options
 
 | Option | Default | Purpose |
 |---|---|---|
 | `--port` | `/dev/ttyACM0` | NeoSD serial device |
 | `--art` | `./art` | Art folder |
-| `--rotate` | `0` | Output rotation: 0 / 90 / 180 / 270 |
-| `--calibrate` | (none) | Interactive window calibration, then exit |
+| `--rotate` | `0` | Starting output rotation (90 or 270 for a portrait panel). Overridden by the admin page's Flip button once used. |
 | `--idle` | `blank` | With no cart link: `blank` (dark, dies with the cab) or `generic` (stays lit; for a slot that usually holds a real cartridge) |
 | `--keep-awake` | off | Never sleep the panel on link loss |
-| `--http-port` | `8080` | Overlay server port |
+| `--http-port` | `8080` | Admin and overlay server port |
+| `--calibrate` | (none) | Advanced: offline terminal calibration for a bench with no network. The admin page is the normal way to calibrate. Keys: arrows move, `+`/`-` resize, `,` `.` `<` `>` tilt, `t` step size, `p` pattern/art preview, `r` reset, `s` save, `q` quit. |
 
 ## Troubleshooting
 
+- **"Connection refused" on the admin page**: you skipped the reboot after
+  installing. Run `sudo reboot`.
+- **The web page shows a single marquee image with no controls**: that's
+  the OBS overlay at the bare address. Add `/admin` to the URL.
+- **Image is upside down**: click **Flip 180°** in the admin page's
+  calibration controls, then Save.
 - **No `/dev/ttyACM0`**: the cart is slot-powered, the cab must be on.
   Check `dmesg | tail` for the "NeoSD Virtual Com Port" enumeration.
 - **Permission denied on the serial port**: your user isn't in `dialout`
   (re-login after `usermod`).
 - **Service runs but no journal output**: `PYTHONUNBUFFERED=1` is missing
   from the unit.
+- **A game shows the generic or placeholder art**: the PNG's name doesn't
+  match that game's MAME short name. Load the game and read the name
+  MarqueeMark wants from the journal (`journalctl -u marqueemark -n 5`),
+  then rename your file to match and re-upload it.
 - **Art doesn't restore after a power cycle**: the slot map has to see
   each flash slot announced once. Cycle through your virtual slots one
   time to seed it. Also confirm `/opt/marqueemark` is owned by the service
@@ -343,10 +445,6 @@ path from a Windows PC: no SD-card readers or SFTP tools required.
   should put it into standby (`echo 0` wakes it). Boards that show a
   permanent "NO SIGNAL" box instead can't use this feature, run with
   `--keep-awake`.
-- **Wrong-direction arrow keys in calibration**: your `--rotate` value is
-  flipped 180° from the panel's mounted orientation. Use the other
-  portrait value (90 or 270). Press `p` first; if the sample art is
-  upside down, that's the sign.
 
 ## Limitations & roadmap
 
