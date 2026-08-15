@@ -36,25 +36,22 @@ Usage:   python3 marqueemark.py [--port /dev/ttyACM0] [--art ./art]
              both are just a missing USB link — so this keeps the
              marquee lit even when the cabinet is powered off. Choose
              it if this slot usually holds a real cartridge.
-         python3 marqueemark.py --calibrate [--rotate ...]
-             Interactive calibration: draws a test pattern, controlled from
-             THIS terminal (works over SSH). Keys:
-               arrows      move up / down / left / right
-               + / -       grow / shrink (uniform - proportions are
-                           always locked to the real mini-marquee card,
-                           4.44 x 5.44; stretching is not possible)
-               , / .       tilt -0.1 deg / +0.1 deg (fine rotation, for
-                           squaring up a slightly crooked panel mount)
-               < / >       tilt -0.5 deg / +0.5 deg (coarse)
-               t           cycle step size (1 / 5 / 20 px)
-               p           toggle test pattern <-> sample art
-               r           reset to default rectangle
-               s           save to calibration.json
-               q or Esc    quit
-             Flow: arrows to position, +/- to size, ,/./</> to square up
-             a crooked mount, s to save. Proportions can never change.
-             Saved calibration is applied automatically on normal runs:
-             art fills the calibrated rectangle exactly (the window).
+Calibration: the primary way to align the image is now the web admin
+         page (http://<pi-hostname>.local:8080/admin) - a live session
+         with on-screen position/size/tilt/flip buttons; the physical
+         panel updates as you click, no SSH or keyboard needed. Only two
+         rotations are valid for this portrait-mounted panel, 90 and
+         270; the "Flip" button toggles between them and is saved to
+         calibration.json, so it survives reboots without editing the
+         systemd unit.
+
+         An offline/advanced fallback still exists for a bench without
+         network access - python3 marqueemark.py --calibrate [--rotate N]
+         drives the same kind of session from THIS terminal instead
+         (works over SSH). Keys: arrows move, +/- resize (proportions
+         always locked to the real 4.44 x 5.44 card), ,/./</> tilt,
+         t cycles step size, p toggles pattern/art preview, r resets,
+         s saves, q quits.
 Deps:    sudo apt install python3-serial python3-pygame
 
 OBS:     add a Browser Source pointing at
@@ -64,7 +61,7 @@ Art management: open http://<pi-hostname>.local:8080/admin in any browser
          on your network to upload marquee PNGs (drag and drop), see what
          is installed, and delete files. Files must be named by MAME short
          name (mslug.png, kof95.png, ...) plus generic.png as fallback.
-v1.0
+v1.1
 """
 
 import argparse
@@ -80,7 +77,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pygame
 import serial
 
-VERSION = "1.0"
+VERSION = "1.1"
 
 MAGIC = b"\x99\x88\x3a"
 FRAME_LEN = 61
@@ -97,22 +94,42 @@ CAL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "calibration
 # so the correct window aspect is a constant: height = width * this.
 MARQUEE_ASPECT = 5.44 / 4.44
 
+# Only 90/270 are valid rotations for this portrait-mounted panel; they
+# are 180 degrees apart, which inverts how on-panel motion maps to the
+# logical canvas. INVERT_DPAD_AT is the orientation that needs its D-pad
+# translation negated so the arrows always mean physical up/down/left/
+# right on the panel. Verified on hardware: at 90 the mapping is
+# inverted and needs the negation; at 270 it is already correct.
+INVERT_DPAD_AT = 90
+
+# Commands from the web admin page's live calibration controls, drained
+# by the main thread only (SDL/KMS rendering is not thread-safe).
+CAL_QUEUE = queue.Queue()
+
 
 def load_calibration():
-    """Return ([x, y, w, h], tilt_degrees) in logical-canvas pixels, or None."""
+    """Return ([x, y, w, h], tilt_degrees, rotate_or_None), or None.
+
+    rotate is only present once something has saved it (the web "Flip"
+    button, or the CLI calibrator preserving it on save). When absent,
+    the caller should fall back to the --rotate launch argument."""
     try:
         with open(CAL_PATH) as f:
             c = json.load(f)
         rect = [int(c["x"]), int(c["y"]), int(c["w"]), int(c["h"])]
-        return rect, float(c.get("tilt", 0.0))
+        rot = c.get("rotate")
+        return rect, float(c.get("tilt", 0.0)), (int(rot) if rot is not None else None)
     except (OSError, ValueError, KeyError):
         return None
 
 
-def save_calibration(rect, tilt=0.0):
+def save_calibration(rect, tilt=0.0, rotate=None):
+    data = {"x": rect[0], "y": rect[1], "w": rect[2], "h": rect[3],
+            "tilt": round(tilt, 2)}
+    if rotate is not None:
+        data["rotate"] = int(rotate)
     with open(CAL_PATH, "w") as f:
-        json.dump({"x": rect[0], "y": rect[1], "w": rect[2], "h": rect[3],
-                   "tilt": round(tilt, 2)}, f)
+        json.dump(data, f)
 
 
 FB_BLANK = "/sys/class/graphics/fb0/blank"
@@ -249,7 +266,7 @@ ADMIN_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MarqueeMark — Art Manager</title>
+<title>MarqueeMark — Admin</title>
 <style>
   :root { color-scheme: dark; }
   body { margin: 0; font-family: system-ui, sans-serif; background: #101018;
@@ -258,6 +275,18 @@ ADMIN_HTML = """<!DOCTYPE html>
   h1 { margin: 0; font-size: 1.2rem; letter-spacing: 0.04em; }
   h1 span { color: #c8102e; }
   main { padding: 24px; max-width: 1100px; margin: 0 auto; }
+  section { margin-bottom: 36px; }
+  h2 { font-size: 1rem; letter-spacing: 0.03em; color: #ccc; margin: 0 0 4px; }
+  .hint { color: #888; font-size: 0.85rem; margin: 0 0 14px; }
+  .btn { background: #2a2a3a; color: #e8e8f0; border: 1px solid #3a3a4a;
+         border-radius: 6px; padding: 9px 14px; font-size: 0.85rem;
+         cursor: pointer; }
+  .btn:hover { background: #33334a; }
+  .btn.primary { background: #1e5c2e; border-color: #2a7a3e; color: #fff; }
+  .btn.primary:hover { background: #257038; }
+  .btn.danger { background: #4a1e1e; border-color: #6a2a2a; color: #fca; }
+  .btn.danger:hover { background: #5a2424; }
+  .hidden { display: none !important; }
   #drop { border: 2px dashed #555; border-radius: 10px; padding: 34px;
           text-align: center; color: #aaa; cursor: pointer; transition: all .15s; }
   #drop.hot { border-color: #c8102e; color: #fff; background: #1c1420; }
@@ -272,12 +301,79 @@ ADMIN_HTML = """<!DOCTYPE html>
   .card button { background: #2a2a3a; color: #e88; border: 0; border-radius: 5px;
                  padding: 3px 10px; font-size: 0.75rem; cursor: pointer; }
   .card button:hover { background: #c8102e; color: #fff; }
+
+  #cal-panel { background: #161622; border-radius: 10px; padding: 20px;
+               margin-top: 14px; }
+  .cal-readout { font-family: ui-monospace, monospace; font-size: 0.8rem;
+                 color: #7ad; background: #0c0c14; border-radius: 6px;
+                 padding: 8px 12px; margin-bottom: 16px; display: inline-block; }
+  .cal-layout { display: flex; gap: 32px; flex-wrap: wrap; }
+  .dpad { display: grid; grid-template-columns: 52px 52px 52px;
+          grid-template-rows: 52px 52px 52px; gap: 4px; }
+  .dpad button { font-size: 1.1rem; padding: 0; }
+  .dpad .u { grid-column: 2; grid-row: 1; }
+  .dpad .l { grid-column: 1; grid-row: 2; }
+  .dpad .mid { grid-column: 2; grid-row: 2; font-size: 0.68rem; }
+  .dpad .r { grid-column: 3; grid-row: 2; }
+  .dpad .d { grid-column: 2; grid-row: 3; }
+  .cal-col { display: flex; flex-direction: column; gap: 14px; min-width: 220px; }
+  .cal-row { display: flex; align-items: center; gap: 8px; }
+  .cal-row .label { color: #999; font-size: 0.82rem; width: 44px; }
+  .cal-actions { margin-top: 20px; display: flex; gap: 10px; }
 </style>
 </head>
 <body>
-<header><h1>Marquee<span>Mark</span> — Art Manager
+<header><h1>Marquee<span>Mark</span> — Admin
   <small style="color:#888;font-weight:normal;font-size:0.7em">v{{VERSION}}</small></h1></header>
 <main>
+
+<section>
+  <h2>Calibrate Marquee</h2>
+  <p class="hint">Positions and sizes the image to match your physical
+    marquee window. Watch the panel while you click — it updates live.
+    Proportions are always locked; you cannot stretch the image.</p>
+  <button id="cal-enter-btn" class="btn primary">Start Calibration</button>
+
+  <div id="cal-panel" class="hidden">
+    <div class="cal-readout" id="cal-readout">-</div>
+    <div class="cal-layout">
+      <div class="dpad">
+        <button class="u" data-dir="up">&#9650;</button>
+        <button class="l" data-dir="left">&#9664;</button>
+        <button class="mid" id="cal-step">5px</button>
+        <button class="r" data-dir="right">&#9654;</button>
+        <button class="d" data-dir="down">&#9660;</button>
+      </div>
+      <div class="cal-col">
+        <div class="cal-row">
+          <span class="label">Size</span>
+          <button class="btn" data-size="-1">&minus;</button>
+          <button class="btn" data-size="1">+</button>
+        </div>
+        <div class="cal-row">
+          <span class="label">Tilt</span>
+          <button class="btn" data-tilt="-0.5">&laquo;</button>
+          <button class="btn" data-tilt="-0.1">&lsaquo;</button>
+          <button class="btn" data-tilt="0.1">&rsaquo;</button>
+          <button class="btn" data-tilt="0.5">&raquo;</button>
+        </div>
+        <div class="cal-row">
+          <button id="cal-flip" class="btn">Flip 180&deg; (if upside down)</button>
+        </div>
+        <div class="cal-row">
+          <button id="cal-preview" class="btn">Preview: Test Pattern</button>
+        </div>
+      </div>
+    </div>
+    <div class="cal-actions">
+      <button id="cal-save" class="btn primary">Save</button>
+      <button id="cal-cancel" class="btn">Cancel</button>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Marquee Art</h2>
   <div id="drop">Drop marquee PNGs here (or click to choose files)<br>
     <small>Name files by MAME short name: mslug.png, kof95.png ... plus generic.png</small>
   </div>
@@ -285,7 +381,10 @@ ADMIN_HTML = """<!DOCTYPE html>
   <div id="status"></div>
   <div id="warn"></div>
   <div id="grid"></div>
+</section>
+
 <script>
+// -------------------------------------------------------- art manager
 const drop = document.getElementById('drop');
 const pick = document.getElementById('pick');
 const grid = document.getElementById('grid');
@@ -332,6 +431,65 @@ drop.ondragleave = () => drop.classList.remove('hot');
 drop.ondrop = e => { e.preventDefault(); drop.classList.remove('hot');
                      upload(e.dataTransfer.files); };
 refresh();
+
+// ----------------------------------------------------- live calibration
+const STEPS = [5, 1, 20];
+let stepI = 0;
+let previewMode = 'pattern';
+const calEnterBtn = document.getElementById('cal-enter-btn');
+const calPanel = document.getElementById('cal-panel');
+const calReadout = document.getElementById('cal-readout');
+const calStepBtn = document.getElementById('cal-step');
+const calFlipBtn = document.getElementById('cal-flip');
+const calPreviewBtn = document.getElementById('cal-preview');
+
+async function calPost(path, params) {
+  const qs = params ? ('?' + new URLSearchParams(params).toString()) : '';
+  try { await fetch(path + qs, {method: 'POST'}); } catch (_) {}
+  refreshCalState();
+}
+
+async function refreshCalState() {
+  let s;
+  try { s = await (await fetch('/calibrate/state')).json(); }
+  catch (_) { return; }
+  calPanel.classList.toggle('hidden', !s.active);
+  calEnterBtn.classList.toggle('hidden', s.active);
+  if (s.active) {
+    calReadout.textContent = 'x=' + s.x + ' y=' + s.y + ' w=' + s.w +
+      ' h=' + s.h + ' tilt=' + s.tilt.toFixed(1) + ' rotate=' + s.rotate;
+    previewMode = s.preview || 'pattern';
+    calPreviewBtn.textContent = 'Preview: ' +
+      (previewMode === 'art' ? 'Marquee Art' : 'Test Pattern');
+  }
+}
+
+calEnterBtn.onclick = () => calPost('/calibrate/enter');
+calStepBtn.onclick = () => {
+  stepI = (stepI + 1) % STEPS.length;
+  calStepBtn.textContent = STEPS[stepI] + 'px';
+};
+document.querySelectorAll('[data-dir]').forEach(b => {
+  b.onclick = () => calPost('/calibrate/move',
+    {dir: b.dataset.dir, step: STEPS[stepI]});
+});
+document.querySelectorAll('[data-size]').forEach(b => {
+  b.onclick = () => calPost('/calibrate/size',
+    {delta: parseInt(b.dataset.size) * STEPS[stepI]});
+});
+document.querySelectorAll('[data-tilt]').forEach(b => {
+  b.onclick = () => calPost('/calibrate/tilt', {delta: b.dataset.tilt});
+});
+calFlipBtn.onclick = () => calPost('/calibrate/flip');
+calPreviewBtn.onclick = () => {
+  previewMode = previewMode === 'art' ? 'pattern' : 'art';
+  calPost('/calibrate/preview', {mode: previewMode});
+};
+document.getElementById('cal-save').onclick = () => calPost('/calibrate/save');
+document.getElementById('cal-cancel').onclick = () => calPost('/calibrate/exit');
+
+refreshCalState();
+setInterval(refreshCalState, 600);
 </script>
 </main>
 </body>
@@ -354,9 +512,10 @@ def _safe_art_name(name):
 
 
 class OverlayServer:
-    def __init__(self, art_dir, port):
+    def __init__(self, art_dir, port, display):
         self.art_dir = art_dir
         self.port = port
+        self.display = display         # read-only status for /calibrate/state
         self._clients = set()          # set[queue.Queue]
         self._lock = threading.Lock()
         self._current = None           # last published game dict (or None)
@@ -398,12 +557,27 @@ class OverlayServer:
                         cur = server._current
                     body = json.dumps(cur or {"short": None}).encode()
                     self._send(200, "application/json", body)
+                elif path == "/calibrate/state":
+                    self._send(200, "application/json",
+                               json.dumps(self._cal_state()).encode())
                 elif path == "/events":
                     self._serve_events()
                 elif path.startswith("/art/"):
                     self._serve_art(path[len("/art/"):])
                 else:
                     self._send(404, "text/plain", b"not found")
+
+            def _cal_state(self):
+                """Current calibration status, live session or last saved."""
+                d = server.display
+                if d.calibrating and d.cal_work:
+                    w = d.cal_work
+                    return {"active": True, "x": w["x"], "y": w["y"],
+                           "w": w["w"], "h": w["h"], "tilt": w["tilt"],
+                           "rotate": w["rotate"], "preview": w["preview"]}
+                return {"active": False, "x": d.rect.x, "y": d.rect.y,
+                       "w": d.rect.w, "h": d.rect.h, "tilt": d.tilt,
+                       "rotate": d.rotate, "preview": "pattern"}
 
             def do_POST(self):
                 path, _, query = self.path.partition("?")
@@ -417,8 +591,38 @@ class OverlayServer:
                     self._handle_upload(params.get("name", ""))
                 elif path == "/delete":
                     self._handle_delete(params.get("name", ""))
+                elif path.startswith("/calibrate/"):
+                    self._handle_calibrate(path[len("/calibrate/"):], params)
                 else:
                     self._send(404, "text/plain", b"not found")
+
+            def _handle_calibrate(self, action, params):
+                # All of these just enqueue a command for the main thread
+                # to apply (SDL/KMS rendering must happen off this thread).
+                try:
+                    if action == "enter":
+                        CAL_QUEUE.put(("enter",))
+                    elif action == "exit":
+                        CAL_QUEUE.put(("exit",))
+                    elif action == "save":
+                        CAL_QUEUE.put(("save",))
+                    elif action == "move":
+                        CAL_QUEUE.put(("move", params.get("dir", ""),
+                                       int(params.get("step", "5"))))
+                    elif action == "size":
+                        CAL_QUEUE.put(("size", int(params.get("delta", "0"))))
+                    elif action == "tilt":
+                        CAL_QUEUE.put(("tilt", float(params.get("delta", "0"))))
+                    elif action == "flip":
+                        CAL_QUEUE.put(("flip",))
+                    elif action == "preview":
+                        CAL_QUEUE.put(("preview", params.get("mode", "pattern")))
+                    else:
+                        self._send(404, "text/plain", b"not found")
+                        return
+                    self._send(200, "text/plain", b"ok")
+                except (ValueError, TypeError):
+                    self._send(400, "text/plain", b"bad parameters")
 
             def _handle_upload(self, raw_name):
                 name = _safe_art_name(raw_name)
@@ -524,38 +728,58 @@ class Display:
         pygame.init()
         pygame.mouse.set_visible(False)
         self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-        self.rotate = rotate % 360
         phys = self.screen.get_size()
+
+        cal = load_calibration()
+        rect_l, tilt, saved_rotate = cal if cal else (None, 0.0, None)
+        # A rotate saved via the web "Flip" button overrides the --rotate
+        # launch flag, so flipping never requires editing the systemd
+        # unit again once it's been set once.
+        self.rotate = (saved_rotate if saved_rotate is not None else rotate) % 360
+
         # Logical canvas: what we compose art onto. For 90/270 the canvas
-        # is the physical screen turned on its side.
+        # is the physical screen turned on its side. (90 and 270 share
+        # the same logical size - they differ only in final rotation.)
         if self.rotate in (90, 270):
             self.size = (phys[1], phys[0])
         else:
             self.size = phys
+
         self.art_dir = art_dir
         self.current = None
-        # Calibrated window rectangle on the logical canvas (or full canvas).
-        cal = load_calibration()
+        self.tilt = tilt
+        self.rect = pygame.Rect(*rect_l) if rect_l else \
+            pygame.Rect(0, 0, self.size[0], self.size[1])
         if cal:
-            rect_l, tilt = cal
-            self.rect = pygame.Rect(*rect_l)
-            self.tilt = tilt
-            print("[MarqueeMark] calibration: %s tilt=%.2f" % (rect_l, tilt))
-        else:
-            self.rect = pygame.Rect(0, 0, self.size[0], self.size[1])
-            self.tilt = 0.0
+            print("[MarqueeMark v%s] calibration: rect=%s tilt=%.2f rotate=%d"
+                  % (VERSION, rect_l, tilt, self.rotate))
+
+        # Live web-calibration session state (see process_calibration_queue).
+        self.calibrating = False
+        self.cal_work = None
+        self._cal_sample = None  # lazily-loaded generic.png for art preview
+
         self.blank()
 
-    def _place(self, canvas, card):
-        """Put a window-sized card onto the canvas, tilt-corrected."""
-        if self.tilt:
-            card = pygame.transform.rotozoom(card, self.tilt, 1.0)
-        canvas.blit(card, card.get_rect(center=self.rect.center))
+    def _place(self, canvas, card, rect=None, tilt=None):
+        """Put a window-sized card onto the canvas, tilt-corrected.
 
-    def _present(self, surf):
-        """Rotate the composed logical canvas onto the physical screen."""
-        if self.rotate:
-            surf = pygame.transform.rotate(surf, self.rotate)
+        rect/tilt default to the saved calibration; a live calibration
+        session passes its own working values instead."""
+        rect = self.rect if rect is None else rect
+        tilt = self.tilt if tilt is None else tilt
+        if tilt:
+            card = pygame.transform.rotozoom(card, tilt, 1.0)
+        canvas.blit(card, card.get_rect(center=rect.center))
+
+    def _present(self, surf, rotate=None):
+        """Rotate the composed logical canvas onto the physical screen.
+
+        rotate defaults to the saved orientation; a live calibration
+        session can preview a different one before it's saved."""
+        rot = self.rotate if rotate is None else rotate
+        if rot:
+            surf = pygame.transform.rotate(surf, rot)
         self.screen.blit(surf, (0, 0))
         pygame.display.flip()
 
@@ -597,6 +821,8 @@ class Display:
         self.current = surf
 
     def show_game(self, game):
+        if self.calibrating:
+            return  # a live calibration session owns the screen
         path = os.path.join(self.art_dir, "%s.png" % game["short"])
         if os.path.exists(path):
             surf = self._fit(pygame.image.load(path).convert())
@@ -609,6 +835,8 @@ class Display:
         self._fade_to(surf)
 
     def blank(self):
+        if self.calibrating:
+            return
         surf = pygame.Surface(self.size)
         surf.fill(BG)
         self._present(surf)
@@ -616,6 +844,8 @@ class Display:
 
     def show_idle(self):
         """Generic marquee for when no game can be identified."""
+        if self.calibrating:
+            return
         path = os.path.join(self.art_dir, GENERIC + ".png")
         if os.path.exists(path):
             self._fade_to(self._fit(pygame.image.load(path).convert()))
@@ -625,7 +855,7 @@ class Display:
     def sleep(self):
         """Release the screen and cut video output so the panel's driver
         board loses signal and drops to standby (backlight off)."""
-        if self.screen is None:
+        if self.screen is None or self.calibrating:
             return
         pygame.display.quit()
         self.screen = None
@@ -652,6 +882,134 @@ class Display:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 return False
         return True
+
+    # -------------------------------------------- web calibration session
+    #
+    # Driven by CAL_QUEUE, filled by the admin page's HTTP handlers
+    # (running in a different thread) and drained here, on the main
+    # thread, once per loop tick — see process_calibration_queue() call
+    # sites in main(). This lets a browser move/resize/flip/tilt the
+    # marquee live while the service keeps running, no SSH required.
+
+    def process_calibration_queue(self):
+        changed = False
+        while True:
+            try:
+                cmd = CAL_QUEUE.get_nowait()
+            except queue.Empty:
+                break
+            changed = True
+            self._handle_cal_cmd(cmd)
+        if changed and self.calibrating:
+            self._render_calibration_frame()
+
+    def _handle_cal_cmd(self, cmd):
+        op = cmd[0]
+        if op == "enter":
+            if self.screen is None:
+                self.wake()
+            self.calibrating = True
+            self.cal_work = {"x": self.rect.x, "y": self.rect.y,
+                             "w": self.rect.w, "h": self.rect.h,
+                             "tilt": self.tilt, "rotate": self.rotate,
+                             "preview": "pattern"}
+            return
+        if not self.calibrating or self.cal_work is None:
+            return  # stray command with no active session — ignore
+        w = self.cal_work
+        if op == "exit":
+            self.calibrating = False
+            self.cal_work = None
+            self._restore_last_display()
+            return
+        if op == "save":
+            self.rect = pygame.Rect(w["x"], w["y"], w["w"], w["h"])
+            self.tilt = w["tilt"]
+            self.rotate = w["rotate"]
+            save_calibration([self.rect.x, self.rect.y, self.rect.w, self.rect.h],
+                             self.tilt, self.rotate)
+            print("[MarqueeMark v%s] calibration saved: rect=%s tilt=%.2f rotate=%d"
+                  % (VERSION, [self.rect.x, self.rect.y, self.rect.w, self.rect.h],
+                     self.tilt, self.rotate))
+            self.calibrating = False
+            self.cal_work = None
+            self._restore_last_display()
+            return
+        if op == "move":
+            _, direction, step = cmd
+            dx, dy = {"up": (0, -step), "down": (0, step),
+                     "left": (-step, 0), "right": (step, 0)}.get(direction, (0, 0))
+            # The D-pad always means physical up/down/left/right on the
+            # panel. The two supported rotations (90/270) are 180 degrees
+            # apart, which inverts translation on screen — correct for it
+            # so the arrows never feel backwards after a Flip.
+            if w["rotate"] == INVERT_DPAD_AT:
+                dx, dy = -dx, -dy
+            w["x"] += dx
+            w["y"] += dy
+        elif op == "size":
+            _, delta = cmd
+            neww = max(40, w["w"] + delta)
+            w["w"] = neww
+            w["h"] = round(neww * MARQUEE_ASPECT)
+        elif op == "tilt":
+            _, delta = cmd
+            w["tilt"] = round(w["tilt"] + delta, 2)
+        elif op == "flip":
+            w["rotate"] = 270 if w["rotate"] == 90 else 90
+        elif op == "preview":
+            _, mode = cmd
+            w["preview"] = mode if mode in ("pattern", "art") else "pattern"
+        self._clamp_cal_work()
+
+    def _clamp_cal_work(self):
+        w = self.cal_work
+        w["w"] = max(40, min(w["w"], self.size[0]))
+        w["h"] = max(40, min(w["h"], self.size[1]))
+        w["x"] = max(-w["w"] + 20, min(w["x"], self.size[0] - 20))
+        w["y"] = max(-w["h"] + 20, min(w["y"], self.size[1] - 20))
+
+    def _render_calibration_frame(self):
+        w = self.cal_work
+        rect = pygame.Rect(w["x"], w["y"], w["w"], w["h"])
+        surf = pygame.Surface(self.size)
+        surf.fill(BG)
+        drew_art = False
+        if w["preview"] == "art":
+            if self._cal_sample is None:
+                spath = os.path.join(self.art_dir, GENERIC + ".png")
+                if os.path.isfile(spath):
+                    self._cal_sample = pygame.image.load(spath).convert()
+            if self._cal_sample:
+                card = pygame.transform.smoothscale(self._cal_sample, (rect.w, rect.h))
+                self._place(surf, card, rect=rect, tilt=w["tilt"])
+                drew_art = True
+        if not drew_art:
+            box = pygame.Surface((rect.w, rect.h))
+            box.fill((0, 60, 0))
+            pygame.draw.rect(box, (255, 255, 255), box.get_rect(), 4)
+            pygame.draw.line(box, (255, 0, 0), (rect.w // 2, 0), (rect.w // 2, rect.h), 2)
+            pygame.draw.line(box, (255, 0, 0), (0, rect.h // 2), (rect.w, rect.h // 2), 2)
+            for gx in range(0, rect.w, max(20, rect.w // 10)):
+                pygame.draw.line(box, (0, 120, 0), (gx, 0), (gx, rect.h), 1)
+            for gy in range(0, rect.h, max(20, rect.h // 10)):
+                pygame.draw.line(box, (0, 120, 0), (0, gy), (rect.w, gy), 1)
+            corner = min(rect.w, rect.h) // 8
+            for cx, cy in [(0, 0), (rect.w - corner, 0), (0, rect.h - corner),
+                          (rect.w - corner, rect.h - corner)]:
+                pygame.draw.rect(box, (255, 220, 0), (cx, cy, corner, corner), 3)
+            self._place(surf, box, rect=rect, tilt=w["tilt"])
+        self._present(surf, rotate=w["rotate"])
+
+    def _restore_last_display(self):
+        """After leaving a calibration session, redraw whatever should be
+        showing: the active game if known, else blank."""
+        state = load_state()
+        active = state.get("active") if state else None
+        if active:
+            self.show_game(active)
+        else:
+            self.blank()
 
 
 # ---------------------------------------------------------- calibration
@@ -777,8 +1135,12 @@ def calibrate(display):
             elif ch == "s":
                 clamp()
                 tilt = round(tilt, 2)
-                save_calibration([r.x, r.y, r.w, r.h], tilt)
-                print("\nsaved %s tilt=%.2f" % ([r.x, r.y, r.w, r.h], tilt))
+                # Preserve whatever rotate is currently in effect (which
+                # may have been set via the web "Flip" button) so this
+                # offline save doesn't silently drop it.
+                save_calibration([r.x, r.y, r.w, r.h], tilt, display.rotate)
+                print("\nsaved %s tilt=%.2f rotate=%d"
+                      % ([r.x, r.y, r.w, r.h], tilt, display.rotate))
             elif ch in ("q", "\x03"):
                 print("\ndone")
                 return
@@ -835,7 +1197,7 @@ def main():
 
     overlay = None
     try:
-        overlay = OverlayServer(args.art, args.http_port)
+        overlay = OverlayServer(args.art, args.http_port, display)
         overlay.start()
     except OSError as e:
         # Overlay is a bonus; never let it stop the physical marquee.
@@ -867,6 +1229,7 @@ def main():
                     last = (restored["ngh"], restored["short"])
 
                 for frame in frames(port):
+                    display.process_calibration_queue()
                     if not display.pump():
                         pygame.quit()
                         sys.exit(0)
@@ -896,9 +1259,10 @@ def main():
                 idle_shown = True
             last = None
             lost_cycles += 1
-            if lost_cycles == 10 and not args.keep_awake:
+            if lost_cycles == 10 and not args.keep_awake and not display.calibrating:
                 display.sleep()
             for _ in range(10):
+                display.process_calibration_queue()
                 if not display.pump():
                     pygame.quit()
                     sys.exit(0)
