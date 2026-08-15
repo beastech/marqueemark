@@ -8,6 +8,7 @@
 # What it does:
 #   - installs dependencies (python3-serial, python3-pygame)
 #   - creates /opt/marqueemark and downloads marqueemark.py
+#   - installs a starter art/generic.png (fallback marquee) if missing
 #   - grants your user serial + display access (dialout/video/render/input)
 #   - adds the one-command sudoers rule used for display sleep
 #   - sets the Pi to boot to the console (MarqueeMark draws the screen itself)
@@ -72,6 +73,25 @@ else
   fail "Could not download marqueemark.py from $REPO_RAW/marqueemark.py
   This usually means the repo is private/unpublished, or you are offline.
   Workaround: copy marqueemark.py into $INSTALL_DIR yourself, then re-run."
+fi
+
+# ------------------------------------------------------- starter artwork
+# A fallback marquee so the panel shows something on first boot instead
+# of a black rectangle. Only installed if the user has none: an update
+# must never overwrite artwork they chose themselves.
+if [ ! -f "$INSTALL_DIR/art/generic.png" ]; then
+  say "Installing starter fallback marquee (art/generic.png)"
+  TMP_PNG="$(mktemp)"
+  if curl -fsSL "$REPO_RAW/art/generic.png" -o "$TMP_PNG" && [ -s "$TMP_PNG" ]; then
+    mv "$TMP_PNG" "$INSTALL_DIR/art/generic.png"
+    echo "  you can replace it any time from the admin page"
+  else
+    rm -f "$TMP_PNG"
+    echo "  could not download it, skipping (the marquee will be blank until"
+    echo "   you add art/generic.png from the admin page)"
+  fi
+else
+  echo "  keeping your existing art/generic.png"
 fi
 
 # ----------------------------------------------------------- permissions
