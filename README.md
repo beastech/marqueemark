@@ -49,9 +49,13 @@ supports this project at no cost to you.*
 
 **Marquee art is not included** Mini-marquee art packs
 using MAME short-name file naming (`mslug.png`, `kof95.png`, ...) are
-available to registered users at EmuMovies. Add the PNGs from the built-in
-art manager page, and include a `generic.png` (a generic Neo Geo marquee)
-which is used as the fallback image.
+available to registered users at EmuMovies.
+
+https://emumovies.com/files/file/1628-neo-geo-mvs-marquee-pack-mini/
+
+Add the PNGs from the built-in art manager page. 
+I include a "generic.png" image of the Gamesboro logo
+so that you can align your image before downloading the pack.
 
 ## How it works
 
