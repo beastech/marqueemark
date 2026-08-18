@@ -1,5 +1,7 @@
 # MarqueeMark
 
+[![Watch the build video](https://img.youtube.com/vi/57Q8elVT100/maxresdefault.jpg)](https://youtu.be/57Q8elVT100)
+
 **A digital mini-marquee for the Neo Geo MVS using NeoSD Pro.** MarqueeMark replaces a mini
 marquee card with a small LCD panel that *always shows the correct game*:
 it listens to a TerraOnion NeoSD Pro flash cart over USB and switches the
