@@ -22,7 +22,7 @@
 
 set -euo pipefail
 
-REPO_RAW="https://raw.githubusercontent.com/darren-p-thomas/marqueemark/main"
+REPO_RAW="https://raw.githubusercontent.com/beastech/marqueemark/main"
 INSTALL_DIR="/opt/marqueemark"
 SERVICE="/etc/systemd/system/marqueemark.service"
 
