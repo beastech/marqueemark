@@ -1,0 +1,5 @@
+# Keep early boot black and let MarqueeMark render the visible Neo Geo
+# startup sequence after SDL/KMS has acquired the physical display. Drawing
+# the same artwork here would produce two startup sequences on a cold boot.
+Window.SetBackgroundTopColor(0, 0, 0);
+Window.SetBackgroundBottomColor(0, 0, 0);

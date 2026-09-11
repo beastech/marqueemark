@@ -3,6 +3,124 @@
 This fork is based on MarqueeMark v1.3.4 by beastech. Version suffixes
 identify the Electrocoin / Digital Marquee work in this repository.
 
+## Unreleased — locked Neo Geo marquee release
+
+- Fixed a crash loop when a saved display mode is loaded while HDMI is
+  disconnected. Headless mode now retains display state and redraws it when
+  HDMI becomes available.
+- Restored tty1 as a local recovery path for installations affected by the
+  earlier console-lockdown change, and stopped selecting a custom Plymouth
+  theme during normal installation.
+- Guarded the optional Plymouth artwork against shutdown mode and zero-size
+  windows.
+- Made the Neo Geo Plymouth theme an explicit, persistent installer opt-in;
+  normal installs retain the stock Raspberry Pi OS boot presentation.
+- Made the opted-in theme paint shutdown black before inspecting display
+  geometry and quietly hand off the console while retaining tty1 recovery.
+- Limited splash artwork to Plymouth's `boot` mode and blanked the framebuffer
+  after Pygame exits, preventing its console restoration from flashing during
+  reboot.
+- Kept Raspberry Pi OS cloud-init boot output in journald for the opted-in
+  cabinet presentation, preventing its saved tty1 buffer from resurfacing at
+  shutdown while preserving the tty1 recovery login.
+- Clear retained tty1 framebuffer text after both its recovery getty and
+  MarqueeMark have settled, avoiding a race where agetty repainted its login
+  banner after the original pre-start clear.
+- Moved the opted-in cabinet presentation's local recovery login to tty2,
+  because agetty repaints tty1 whenever SDL releases KMS. Default installs
+  continue to use tty1; cabinet users retain recovery via Ctrl+Alt+F2.
+- Play the native Neo Geo shutdown animation for real system reboots and
+  power-offs, while skipping it for installer updates and ordinary service
+  restarts. The sequence finishes on black before systemd stops the renderer.
+- Avoid replaying that animation when the cabinet-loss countdown itself
+  requests power-off; the completed countdown now hands directly to shutdown.
+- Render the opted-in startup art through MarqueeMark after KMS is available,
+  so a cold boot does not depend on Plymouth winning the early HDMI race.
+- Draw that startup sequence procedurally through the same canvas proven by
+  the shutdown animation, avoiding a static-image path that rendered black on
+  the physical cold-start test.
+- Keep Plymouth's early handoff black so it cannot duplicate the later native
+  startup sequence on cold boot.
+- Run the native startup sequence before saved-layout restoration, preventing
+  the previous marquee from flashing before the boot animation.
+- Resolve rotation from the selected display mode during construction, so a
+  saved Ultrawide cold boot cannot inherit the Mini Marquee's 90-degree flag.
+- Validate sudoers rules before installing them.
+
+- Finalised the built-in Neo Geo 1 Slot, 2 Slot, 4 Slot, and 6 Slot artwork,
+  all with consistent naming and stable library ordering. The active marquee
+  remains highlighted in place rather than moving to the front of the list.
+- Added a centred live “On display” preview that lists every assigned card,
+  including the active NeoSD Pro game.
+- Added a private exact-size mini-marquee quality cache. Generated variants
+  now live in `cache/mini-marquees`, leaving shared game art untouched.
+- Improved the Admin marquee-library flow: built-ins and saved custom
+  marquees appear before the creation action, and an empty custom library has
+  its own create call to action.
+
+- Added an optional, configurable cabinet-safe Pi shutdown flow. When the
+  NeoSD USB device disappears, MarqueeMark can show a Game Over sequence and
+  cleanly halt the Pi after a user-selected 5–600 second delay.
+- Added an explicit Advanced settings opt-in before cabinet-power controls
+  become interactive. The feature is disabled by default and never treats
+  normal game inactivity as a power-off signal.
+- Replaced the experimental video shutdown art with a native reverse Neo Geo
+  boot sequence: finished boot screen, mirrored logo, GAME OVER, then black.
+  Added safe browser and on-marquee previews that never halt the Pi.
+
+## v1.3.5-layout-modes.4 — Electrocoin full-height correction
+
+- Removed the remaining black padding from the refreshed Electrocoin 4 Slot
+  image so its lower border reaches the final row of the 1366 × 380 canvas.
+- Updated its built-in card-window geometry for the corrected full-height art.
+
+## v1.3.5-layout-modes.3 — Electrocoin canvas correction
+
+- Corrected the refreshed Electrocoin 4 Slot artwork: its visible artwork now
+  fills the complete **1366 × 380** canvas rather than leaving a black padded
+  band at the bottom of the physical marquee.
+- Adjusted the four built-in card windows to match the corrected artwork.
+
+## v1.3.5-layout-modes.2 — Electrocoin four-slot refresh
+
+- Replaced the provided **Electrocoin 4 Slot** Ultrawide template with a new
+  1366 × 380 artwork treatment: four framed portrait-card windows, authentic
+  Electrocoin lower labels and matching side speaker grilles.
+- Kept the original legacy artwork file in place so existing saved layouts
+  continue to render as they were configured.
+- Removed the display-only NeoSD Pro cyan/red emphasis outline so physical
+  HDMI output matches the Admin preview.
+
+## v1.3.5-layout-modes.1 — Mini and Ultrawide Marquee modes
+
+- Split the Admin experience into always-available **Mini Marquee** and
+  **Ultrawide Marquee** areas. Browsing either area never changes the physical
+  HDMI output.
+- Added first-run display setup stored on the Pi, rather than in a browser:
+  choose the connected Mini Marquee or Ultrawide Marquee and MarqueeMark uses
+  that renderer after future service restarts and cold boots.
+- Made later display-type changes deliberately safe: the user is warned that
+  the output redraws immediately, then has 30 seconds to keep the change or
+  automatically revert to the previous renderer.
+- Added a clear **Monitor Output** status/control in the header and made the
+  Mini/Ultrawide Admin tabs more prominent.
+- Added built-in **Neo Geo 2 Slot**, **Neo Geo 4 Slot**, and **Neo Geo 6 Slot**
+  Ultrawide templates, alongside the existing Electrocoin 4 Slot and Neo Geo
+  1 Slot bases. Each maps the correct number of portrait mini-marquee windows.
+- Updated the Ultrawide canvas and built-in assets to the measured
+  **1366 × 380** visible panel area. The advanced viewport-height diagnostic
+  remains available for unusual panels, but is kept separate from layouts and
+  has no card assignments.
+- Improved the Ultrawide workflow with a prominent **Create your own layout**
+  action and an empty state for new installations with no live layout yet.
+- Prevented the background status refresh from closing a card-art picker while
+  it is being used. Saving assignments now provides a short **Saved** button
+  acknowledgement without rebuilding the form.
+- Refined the card-assignment controls with compact modern dark selectors,
+  plus clearer template, preview, and output-status styling.
+- Updated installation support so the required Ultrawide assets and current
+  application code are included on fresh installs and updates.
+
 ## v1.3.4-electrocoin.19 — Layout library refinement
 
 - Grouped provided cabinet designs under **Built-in templates** and saved

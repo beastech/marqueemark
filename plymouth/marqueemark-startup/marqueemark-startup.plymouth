@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=MarqueeMark startup
+Description=Neo Geo startup screen for MarqueeMark
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/marqueemark-startup
+ScriptFile=/usr/share/plymouth/themes/marqueemark-startup/marqueemark-startup.script

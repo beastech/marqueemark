@@ -26,11 +26,29 @@ reversible.
   cabinet powering on, before you touch anything
 - **Display sleep**: when the cabinet turns off, the panel's backlight
   shuts down too; it wakes automatically with the cab
+- **Safe Pi shutdown after cabinet power-off**: optionally detect the NeoSD
+  Pro disconnect when a shared cabinet/Pi power switch is turned off, play a
+  native reverse Neo Geo boot sequence, then halt the Pi cleanly after a
+  configurable 5–600 second delay. It is disabled by default and normal game
+  inactivity never triggers it. Browser and on-marquee previews are safe and
+  never power off the Pi. MarqueeMark blanks the framebuffer before requesting
+  power-off, while a local tty1 recovery login remains available after reboot. The
+  Neo Geo visual sequence is used only with the Ultrawide Marquee; mini
+  marquees cleanly blank before power-off.
 - **Calibration from your browser**: position, resize, tilt, and flip the
   image from the admin page on any phone or PC while watching the panel
   update live. No SSH, no keyboard, no Linux required. Proportions are
   locked to the real mini-marquee card, so the image can never be
   stretched.
+- **Optional Neo Geo boot splash**: set `MARQUEEMARK_NEO_GEO_SPLASH=1` when
+  running the installer to select the guarded custom Plymouth theme. The
+  choice persists across updates and enables a quiet black shutdown handoff.
+  Normal installs retain Raspberry Pi OS's stock boot theme. Both choices
+  retain a usable local recovery login. With the optional presentation,
+  press **Ctrl+Alt+F2** to reach that login on tty2; tty1 is reserved for the
+  clean marquee handoff. In addition,
+  cloud-init diagnostics remain in the system journal instead of also being
+  copied into tty1's visible framebuffer.
 - **Second marquee support**: a slot with a real cartridge instead of a
   NeoSD Pro can't announce itself, so a second panel (on its own Pi) can
   be set to manual mode instead. Pick its art from the same kind of admin
@@ -70,17 +88,29 @@ Add the PNGs from the built-in art manager page.
 I include a "generic.png" image of the Gamesboro logo
 so that you can align your image before downloading the pack.
 
-### Electrocoin four-slot layout
+### Ultrawide Marquee layouts
 
-This mode was contributed by Darren (darren-p-thomas), who built it for
-his Electrocoin cabinet conversion. Thanks to his work, `--electrocoin`
-enables a second output mode alongside the standard portrait panel: a
-**Digital Marquee (1366 x 380)** template for wide Electrocoin four-slot
-cabinets. Its Admin page lets you choose what each card shows: blank, the
-highlighted live **NeoSD Pro** card, or a fixed artwork card. Artwork
-choices use friendly game titles; an unknown hack or homebrew shows its
-PNG filename instead, for example `myhack.png`. Only one card can be the
-live NeoSD Pro card.
+MarqueeMark has two display experiences, both available from the Admin page:
+
+- **Mini Marquee** retains the original portrait artwork, calibration, and
+  art-library workflow.
+- **Ultrawide Marquee** drives a 1366 × 380 wide canvas made from one
+  background and one or more mini-marquee cards.
+
+Use the prominent **What display do you have?** selector to choose which
+renderer drives the physical display. The choice is saved on the Pi, while
+both Admin tabs stay available for setup and exploration. New installs choose
+an initial display type; `--layout mini` and `--layout ultrawide` provide an
+initial command-line default. `--electrocoin` remains a compatibility alias
+for existing wide-panel installations. This mode was contributed by Darren
+(`darren-p-thomas`), who built it for his Electrocoin cabinet conversion.
+
+The first included Ultrawide template is the wide four-card **Electrocoin 4
+Slot** conversion. Its Admin page lets
+you choose what each card shows: blank, the highlighted live **NeoSD Pro**
+card, or a fixed artwork card. Artwork choices use friendly game titles;
+an unknown hack or homebrew shows its PNG filename instead, for example
+`myhack.png`. Only one card can be the live NeoSD Pro card.
 
 **Custom layouts** are a small layout library, separate from game-art
 assignments. Give a new layout a name, choose either a PNG/JPEG background
@@ -94,10 +124,20 @@ Once a layout is selected, its separate card-assignment controls appear
 underneath. Deleting a layout that is currently on display safely returns the
 cabinet to the built-in Electrocoin layout after confirmation.
 
-The built-in template library currently includes **Electrocoin four-slot** and
-**Neo Geo one-slot**. The one-slot design uses its original black "Now
-Featuring" window for the generated mini marquee. Neo Geo two-, four-, and
-six-slot templates remain planned.
+The built-in template library includes **Electrocoin 4 Slot** (with the
+Electrocoin-style speaker grilles and four framed card windows), plus **Neo
+Geo one-, two-, four-, and six-slot** templates. The one-slot design uses its
+original black “Now Featuring” window for the generated mini marquee.
+
+The template library includes the locked, aspect-preserved red Neo Geo
+two-, four-, and six-slot panels alongside the one-slot design. Built-in
+marquees remain in a consistent 1-, 2-, 4-, 6-slot, then Electrocoin order;
+the active marquee is highlighted in place.
+
+For particularly text-heavy mini marquees, MarqueeMark can keep exact-size
+high-quality variants in its private `cache/mini-marquees` directory. The
+shared `art/` directory remains original game artwork only, so it is safe to
+use alongside other frontends.
 
 MarqueeMark's Admin page also works with HDMI disconnected, so layouts can be
 created and managed while the cabinet is powered down. Reconnect the display
@@ -618,10 +658,23 @@ correct an upside-down image.
 | `--keep-awake` | off | Never sleep the panel automatically. The admin page's Sleep/Wake buttons still work. |
 | `--http-port` | `8080` | Admin and overlay server port |
 | `--manual` | off | No NeoSD Pro on this panel; pick the marquee by hand from the admin page instead. Use for a second panel behind a real cartridge, or any cabinet without a NeoSD Pro at all. See [Adding a second marquee](#adding-a-second-marquee). |
+| `--layout` | saved choice / `mini` | Initial display type: `mini` for the original portrait renderer or `ultrawide` for the wide layout renderer. The Admin display-type selector persists later changes. |
+| `--electrocoin` | off | Deprecated compatibility alias for an Ultrawide installation. |
 | `--art-source` | none | `--manual` only. Base URL of another MarqueeMark (e.g. `http://marquee.local:8080`) to pull art from, so the library lives in one place instead of being copied to every panel. |
 | `--sleep-source` | none | `--manual` only. URL of another MarqueeMark's `/current` endpoint. This panel sleeps and wakes to match that cabinet's power state. Omit to control sleep by hand instead. |
-| `--electrocoin` | off | Switches to the wide Electrocoin four-slot digital marquee mode instead of the standard portrait panel. Adds a Digital Marquee section to the admin page with a layout library and optional AI-generated backgrounds. Contributed by Darren (darren-p-thomas). See [Enabling Electrocoin mode](#enabling-electrocoin-mode). |
 | `--calibrate` | (none) | Advanced: offline terminal calibration for a bench with no network. The admin page is the normal way to calibrate. Keys: arrows move, `+`/`-` resize, `,` `.` `<` `>` tilt, `d` cycle D-pad orientation, `t` step size, `p` pattern/art preview, `r` reset, `s` save, `q` quit. |
+
+## Ultrawide Marquee notes
+
+Ultrawide layouts are configurable through their Admin tab. The Electrocoin
+4 Slot base is included as one template, but custom layouts can use any
+background and one, two, four, or six mini-marquee windows. The reference
+canvas is 1366 × 380. The saved Ultrawide layout choices currently live in
+`/opt/marqueemark/electrocoin.json` for backwards compatibility; this filename
+will be migrated in a later compatibility release.
+
+This mode does not yet identify the MVS motherboard's active physical slot;
+GPIO-based active-slot highlighting is a future enhancement.
 
 ## Troubleshooting
 

@@ -1,6 +1,10 @@
 art/*
+cache/
 !art/electrocoin-base.png
 !art/neogeo-one-slot.png
+!art/neogeo-two-slot-red-left-one-slot-scale-v12.png
+!art/neogeo-four-slot-red-low-v5.png
+!art/neogeo-six-slot-red-clean-final-v8.png
 calibration.json
 lastgame.json
 __pycache__/
