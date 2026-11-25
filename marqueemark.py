@@ -30,6 +30,8 @@ Usage:   python3 marqueemark.py [--port /dev/ttyACM0] [--art ./art]
              the BACKLIGHT turns off. Restored automatically when the
              link returns. Requires a sudoers rule (see README/comments
              at _fb_blank). Disable with --keep-awake.
+         --wake-delay SECONDS: pause before an automatic wake turns the
+             panel back on (default 0). Admin-page Wake stays immediate.
 
          --idle generic: show art/generic.png instead. NOTE: the Pi
              cannot tell "cab off" from "cab on with a real MVS cart" —
@@ -2588,6 +2590,9 @@ class Display:
         self.layout_mode = layout_mode if layout_mode in DISPLAY_MODES else ("ultrawide" if electrocoin else "mini")
         self.electrocoin = self.layout_mode == "ultrawide"
         self.headless = False
+        # Seconds to pause before an automatic wake turns the panel back on
+        # (set from --wake-delay). The admin page's Wake button ignores it.
+        self.wake_delay = 0.0
         # A panel can take several seconds after power-on before KMS will
         # accept a fullscreen surface.  Keep the web server alive in that
         # case, then periodically try again from the main pygame thread.
@@ -3052,6 +3057,9 @@ class Display:
             return
         if self.headless:
             return
+        if not force and self.wake_delay > 0:
+            print("[MarqueeMark] waking display in %gs" % self.wake_delay)
+            time.sleep(self.wake_delay)
         _fb_blank(0)
         try:
             pygame.display.init()
@@ -3690,6 +3698,17 @@ def run_manual(args, display, publish):
         time.sleep(0.1)
 
 
+def _wake_delay(value):
+    """argparse type for --wake-delay: 0-60 seconds, fractions allowed."""
+    try:
+        seconds = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("must be a number of seconds, e.g. 2 or 1.5")
+    if not 0 <= seconds <= 60:
+        raise argparse.ArgumentTypeError("must be between 0 and 60 seconds")
+    return seconds
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", default="/dev/ttyACM0")
@@ -3706,6 +3725,11 @@ def main():
                     help="interactive terminal calibration, then exit")
     ap.add_argument("--keep-awake", action="store_true",
                     help="never sleep the display automatically")
+    ap.add_argument("--wake-delay", type=_wake_delay, default=0.0, metavar="SECONDS",
+                    help="wait this many seconds (fractions allowed, max 60) "
+                         "before an automatic wake turns the panel back on, "
+                         "e.g. when the cabinet powers up. Default 0. The "
+                         "admin page's Wake button is always immediate.")
     ap.add_argument("--idle", choices=["blank", "generic"], default="blank",
                     help="with no NeoSD link: blank (default; marquee goes dark "
                          "with the cab) or generic (stays lit)")
@@ -3736,6 +3760,7 @@ def main():
 
     initial_mode = load_display_mode("ultrawide" if args.electrocoin else (args.layout or "mini"))
     display = Display(args.art, rotate=args.rotate, layout_mode=initial_mode)
+    display.wake_delay = args.wake_delay
 
     if args.calibrate:
         calibrate(display)

@@ -431,6 +431,24 @@ This is the only way to control sleep on a manual-mode panel with no
 `--sleep-source` configured, since it has no cabinet-power signal to
 follow on its own.
 
+**Delaying the wake.** By default the panel lights up the moment the
+cabinet powers on. To hold it dark for a moment first, add
+`--wake-delay` with a number of seconds to the end of the service's
+`ExecStart` line, for example:
+
+```
+ExecStart=/usr/bin/python3 /opt/marqueemark/marqueemark.py --rotate 90 --wake-delay 2
+```
+
+Then run `sudo systemctl daemon-reload && sudo systemctl restart
+marqueemark`. Fractions such as `1.5` work, and the maximum is `60`. The
+delay applies to every automatic wake: a NeoSD Pro link returning, and a
+second panel following its `--sleep-source`. The admin page's **Wake**
+button always wakes immediately. Game changes that arrive during the
+delay aren't lost; the panel shows the current game as soon as it wakes.
+Use this option rather than editing `marqueemark.py`, because changes to
+that file are replaced when you update.
+
 ### Calibrating the image
 
 Mount the panel behind the marquee window with **painter's tape** first,
@@ -671,6 +689,7 @@ correct an upside-down image.
 | `--rotate` | `90` | Starting output rotation (90 or 270 for a portrait panel). Overridden by the admin page's Flip button once used. Only matters for a fresh panel with no saved calibration. |
 | `--idle` | `blank` | With no cart link: `blank` (dark, dies with the cab) or `generic` (stays lit; for a slot that usually holds a real cartridge) |
 | `--keep-awake` | off | Never sleep the panel automatically. The admin page's Sleep/Wake buttons still work. |
+| `--wake-delay` | `0` | Seconds to wait before an automatic wake turns the panel back on, for example when the cabinet powers up. Fractions are allowed (`1.5`), up to `60`. The admin page's Wake button is always immediate. See [Display power](#display-power). |
 | `--http-port` | `8080` | Admin and overlay server port |
 | `--manual` | off | No NeoSD Pro on this panel; pick the marquee by hand from the admin page instead. Use for a second panel behind a real cartridge, or any cabinet without a NeoSD Pro at all. See [Adding a second marquee](#adding-a-second-marquee). |
 | `--layout` | saved choice / `mini` | Initial display type: `mini` for the original portrait renderer or `ultrawide` for the wide layout renderer. The Admin display-type selector persists later changes. |
