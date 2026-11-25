@@ -80,7 +80,9 @@ supports this project at no cost to you.*
 
 **Marquee art is not included.** Mini-marquee art packs
 using MAME short-name file naming (`mslug.png`, `kof95.png`, ...) are
-available to registered users at EmuMovies.
+available to registered users at EmuMovies. Your NeoSD ROM files must use
+the same names (`mslug.neo`, `kof95.neo`, ...); see
+[Adding marquee art](#adding-marquee-art).
 
 https://emumovies.com/files/file/1628-neo-geo-mvs-marquee-pack-mini/
 
@@ -399,10 +401,23 @@ only PNGs are accepted, and names are sanitized automatically. Because
 the art lives on the Pi's Linux partition, this page is also the easiest
 path from a Windows PC: no SD-card readers or SFTP tools required.
 
-If you're not sure what a game's short name is, you don't have to look it
-up: load the game on the NeoSD Pro and MarqueeMark logs the exact name it
-wants (`journalctl -u marqueemark -n 5`), or just watch which art fails to
-appear.
+**Your ROM file names and your image file names must match.** MarqueeMark
+finds the art using the name the NeoSD Pro reports for the loaded game,
+and that name comes from the ROM file on the NeoSD's SD card. A ROM named
+`blazstar.neo` needs `blazstar.png`. A ROM named `Blazing Star.neo` is
+reported as `blazing star` and will never match `blazstar.png`. Name your
+ROMs by MAME short name (`blazstar.neo`, `mslug3.neo`, `samsho.neo`, ...)
+so they line up with the art packs. Renaming the images instead doesn't
+work for names with spaces or capitals, because the art manager only
+accepts lowercase letters, digits, `-` and `_`.
+
+If you're not sure what name a game is being reported as, you don't have
+to guess: load the game on the NeoSD Pro and MarqueeMark logs it
+(`journalctl -u marqueemark -n 5`). In a line like
+`NGH-239 blazing star "Blazing Star" (slot 2)`, the name between the NGH
+number and the quoted title (`blazing star`) is what MarqueeMark is
+looking for. If that isn't the short name of an image you have, rename
+the ROM.
 
 ### Display power
 
@@ -695,10 +710,14 @@ GPIO-based active-slot highlighting is a future enhancement.
   (re-login after `usermod`).
 - **Service runs but no journal output**: `PYTHONUNBUFFERED=1` is missing
   from the unit.
-- **A game shows the generic or placeholder art**: the PNG's name doesn't
-  match that game's MAME short name. Load the game and read the name
-  MarqueeMark wants from the journal (`journalctl -u marqueemark -n 5`),
-  then rename your file to match and re-upload it.
+- **A game shows the generic or placeholder art, or an Ultrawide card
+  window is empty**: the ROM file name and the image file name don't
+  match. Load the game and read the name MarqueeMark is looking for from
+  the journal (`journalctl -u marqueemark -n 5`). If the journal shows a
+  full title such as `blazing star` or `metal slug 3`, rename the ROM on
+  the NeoSD's SD card to its MAME short name (`blazstar.neo`,
+  `mslug3.neo`) so it matches your art (`blazstar.png`, `mslug3.png`). See
+  [Adding marquee art](#adding-marquee-art).
 - **Art doesn't restore after a power cycle**: the slot map has to see
   each flash slot announced once. Cycle through your virtual slots one
   time to seed it. Also confirm `/opt/marqueemark` is owned by the service
